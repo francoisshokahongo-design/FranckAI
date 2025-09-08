@@ -7,6 +7,7 @@ import requests
 import json
 import os
 import re
+import spacy  # ← Intégré pour la compréhension sémantique
 from urllib.parse import quote
 from engine import PredictionEngine
 from api_connector import get_team_info
@@ -32,7 +33,6 @@ def safe_quote(text):
     """Nettoie et encode un texte pour l'utiliser dans une URL."""
     if not isinstance(text, str):
         text = str(text)
-    # Supprimer tout caractère non-ASCII pour éviter les problèmes
     text = re.sub(r'[^\x00-\x7F]+', '', text)
     return quote(text.strip())
 
@@ -44,7 +44,7 @@ def build_search_url(query):
 def build_summary_url(title):
     """Construit une URL de résumé Wikipedia propre et sécurisée."""
     encoded_title = safe_quote(title)
-    return f"https://fr.wikipedia.org/api/rest_v1/page/summary/{encoded_title}"
+    return f"https://fr.wikipedia.org/api/rest_v1/page/summary/{encoded_title}"  # ← ESPACES SUPPRIMÉS
 
 class Franck:
     def __init__(self):
@@ -58,6 +58,14 @@ class Franck:
         ]
         self.prévision = PredictionEngine()
         self.connaissances = self._charger_connaissances()
+
+        # Charger le modèle spaCy pour la compréhension sémantique
+        try:
+            self.nlp = spacy.load("fr_core_news_md")
+            logging.info("✅ Modèle spaCy chargé avec succès.")
+        except Exception as e:
+            logging.error(f"❌ Erreur de chargement de spaCy : {e}")
+            self.nlp = None
 
     def _charger_connaissances(self):
         if os.path.exists(DICTIONARY_PATH):
@@ -109,7 +117,50 @@ class Franck:
         lignes = self.historique_predictions[-nombre_lignes:] if nombre_lignes else self.historique_predictions
         return "\n".join(lignes)
 
+    def detect_intention(self, doc):
+        """Détecte l'intention de la question à partir du doc spaCy."""
+        if any(token.lemma_ == "créer" for token in doc):
+            return "question_fondation"
+        elif any(token.lemma_ == "gagner" for token in doc):
+            return "question_résultat"
+        elif any(token.lemma_ == "jouer" for token in doc):
+            return "question_match"
+        else:
+            return "question_générale"
+
     def operer(self, message):
+        """Traite une question libre de l'utilisateur avec compréhension sémantique."""
+        # Si spaCy n'est pas disponible, fallback sur l'ancien comportement
+        if not self.nlp:
+            return self._operer_fallback(message)
+
+        try:
+            # Traiter la question avec spaCy
+            doc = self.nlp(message)
+
+            # Détecter l'intention
+            intention = self.detect_intention(doc)
+
+            # Extraire les entités nommées (clubs, joueurs, etc.)
+            entites = [ent.text.lower() for ent in doc.ents if ent.label_ in ["ORG", "PERSON"]]
+
+            # Répondre selon l'intention et les entités détectées
+            if intention == "question_fondation" and entites:
+                return self.repondre_fondation(entites[0])
+            elif intention == "question_résultat" and entites:
+                return self.repondre_resultat(entites[0])
+            elif intention == "question_match" and len(entites) >= 2:
+                return self.analyse_match(entites[0], entites[1])
+            else:
+                # Fallback : recherche générale
+                return self.chercher_club_en_ligne(message)
+
+        except Exception as e:
+            logging.error(f"Erreur spaCy : {e}")
+            return self._operer_fallback(message)
+
+    def _operer_fallback(self, message):
+        """Ancien comportement de operer() — fallback si spaCy échoue."""
         message_lower = message.lower()
         for club in self.clubs:
             if club in message_lower:
@@ -118,7 +169,6 @@ class Franck:
                 else:
                     return self.chercher_club_en_ligne(club)
 
-        # Dernier recours : Wikipedia via API REST — VERSION SÉCURISÉE
         try:
             termes = [
                 f"{message} football",
@@ -129,8 +179,6 @@ class Franck:
 
             for terme in termes:
                 search_url = build_search_url(terme)
-                logging.info(f"🔍 Requête Wikipedia : {search_url}")
-
                 try:
                     resp = requests.get(search_url, headers=WIKI_HEADERS, timeout=5)
                     if resp.status_code != 200:
@@ -147,152 +195,34 @@ class Franck:
                                 page_data = resp2.json()
                                 summary = page_data.get("extract", "Résumé non disponible.")
                                 return f"Selon Wikipedia ({title}) : {summary}"
-                except Exception as e:
-                    logging.error(f"Erreur lors de la recherche '{terme}': {e}")
+                except Exception:
                     continue
 
-            raise Exception("Aucun résultat pertinent trouvé")
+            return "Je ne sais pas. Essaye d’être plus précis."
 
         except Exception as e:
-            return f"Je ne sais pas. Essaye d’être plus précis. (Erreur: {e})"
+            return f"Je ne sais pas. (Erreur: {e})"
 
-    def chercher_club_en_ligne(self, nom_club):
-        traductions = {
-            "barcelone": "barcelona",
-            "réal madrid": "real madrid",
-            "psg": "paris saint-germain",
-            "manchester united": "manchester united",
-            "manchester city": "manchester city",
-            "bayern": "bayern munich"
-        }
-        nom_club = traductions.get(nom_club.lower(), nom_club)
+    def repondre_fondation(self, entite):
+        """Répond à une question sur la fondation d'un club."""
+        if entite in self.connaissances:
+            return self.connaissances[entite]["définition"]
+        else:
+            return self.chercher_club_en_ligne(entite)
 
-        # 1️⃣ Essayer d'abord via SportMonks (api_connector)
-        info = get_team_info(nom_club)
+    def repondre_resultat(self, entite):
+        """Répond à une question sur les résultats d'un club."""
+        info = get_team_info(entite)
         if info:
-            description = (
-                f"{info['name']} est basé en {info['country']}. "
-                f"Fondé en {info['founded']}, son stade est {info['stadium']}."
-            )
-            self.connaissances[nom_club.lower()] = {
-                "définition": description,
-                "tactique": "Tactique à compléter.",
-                "transfert": "Transferts à compléter.",
-                "performance": "Performance à compléter."
-            }
-            self._sauvegarder_connaissances()
-            return description
-
-        # 2️⃣ Si SportMonks échoue, essayer via RapidAPI (api-football)
-        url = f"https://api-football-v1.p.rapidapi.com/v3/teams?search={nom_club}"
-        headers = {
-            "X-RapidAPI-Key": RAPID_API_KEY,
-            "X-RapidAPI-Host": RAPID_API_HOST
-        }
-
-        try:
-            response = requests.get(url, headers=headers, timeout=10)
-            data = response.json()
-
-            if data.get("response"):
-                club = data["response"][0]["team"]
-                description = (
-                    f"{club['name']} est basé à {club.get('country', 'pays inconnu')}. "
-                    f"Fondé en {club.get('founded', 'année inconnue')}, "
-                    f"son stade est {club['venue'].get('name', 'stade inconnu')}."
-                )
-                self.connaissances[nom_club.lower()] = {
-                    "définition": description,
-                    "tactique": "Tactique à compléter.",
-                    "transfert": "Transferts à compléter.",
-                    "performance": "Performance à compléter."
-                }
-                self._sauvegarder_connaissances()
-                return description
-            else:
-                logging.info(f"ℹ️ Aucun résultat via RapidAPI pour '{nom_club}'")
-
-        except Exception as e:
-            logging.error(f"❌ Erreur RapidAPI pour '{nom_club}': {e}")
-
-        # 3️⃣ DERNIER RECOURS : WIKIPEDIA via API REST (PLUS FIABLE)
-        try:
-            # Liste des titres à essayer, du plus spécifique au plus général
-            titres_a_tester = [
-                f"FC {nom_club.title()}",
-                f"{nom_club.title()} FC",
-                f"Futbol Club {nom_club.title()}",
-                f"{nom_club.title()} (football)",
-                f"{nom_club.title()} football club",
-                f"Club de {nom_club.title()}",
-                nom_club.title()
-            ]
-
-            for titre in titres_a_tester:
-                api_url = build_summary_url(titre)
-                logging.info(f"📖 Test résumé : {api_url}")
-
-                try:
-                    resp = requests.get(api_url, headers=WIKI_HEADERS, timeout=5)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        # Vérifier que c'est bien un club de football
-                        if "description" in data and "football" in data.get("description", "").lower():
-                            summary = data.get("extract", "Résumé non disponible.")
-                            description = f"Selon Wikipedia ({data.get('title', titre)}) : {summary}"
-                            self.connaissances[nom_club.lower()] = {
-                                "définition": description,
-                                "tactique": "Tactique à compléter.",
-                                "transfert": "Transferts à compléter.",
-                                "performance": "Performance à compléter."
-                            }
-                            self._sauvegarder_connaissances()
-                            logging.info(f"✅ Wikipedia API : page '{data.get('title')}' utilisée pour '{nom_club}'")
-                            return description
-                        else:
-                            logging.info(f"ℹ️ Page '{titre}' non pertinente (pas liée au football).")
-                            continue
-                    elif resp.status_code == 404:
-                        continue
-                except Exception as e:
-                    logging.error(f"Erreur sur '{titre}': {e}")
-                    continue
-
-            # Si rien ne marche, essayer une recherche libre
-            search_term = f"{nom_club} football"
-            search_url = build_search_url(search_term)
-            resp = requests.get(search_url, headers=WIKI_HEADERS, timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                results = data.get("query", {}).get("search", [])
-                for result in results:
-                    title = result["title"]
-                    if any(kw in title.lower() for kw in ["fc", "football", "club"]):
-                        summary_url = build_summary_url(title)
-                        resp2 = requests.get(summary_url, headers=WIKI_HEADERS, timeout=5)
-                        if resp2.status_code == 200:
-                            page_data = resp2.json()
-                            summary = page_data.get("extract", "Résumé non disponible.")
-                            description = f"Selon Wikipedia ({title}) : {summary}"
-                            self.connaissances[nom_club.lower()] = {
-                                "définition": description,
-                                "tactique": "Tactique à compléter.",
-                                "transfert": "Transferts à compléter.",
-                                "performance": "Performance à compléter."
-                            }
-                            self._sauvegarder_connaissances()
-                            logging.info(f"✅ Wikipedia API (recherche) : page '{title}' utilisée pour '{nom_club}'")
-                            return description
-
-            raise Exception("Aucune page pertinente trouvée")
-
-        except Exception as e:
-            return f"Je n'ai trouvé aucune info fiable sur '{nom_club}' sur Wikipedia. (Erreur: {e})"
+            forme = get_team_form(info.get("id"))
+            if forme and forme.get("performance_percent"):
+                return f"Récemment, {entite.title()} a {forme['performance_percent']:.1f}% de victoires."
+        return f"Je cherche les derniers résultats de {entite}..."
 
     def analyse_match(self, team1_name, team2_name, home_team=None):
         team1_id = self.get_team_id(team1_name)
         team2_id = self.get_team_id(team2_name)
-        moteur = self.prévision  # ← Utilise l'instance existante
+        moteur = self.prévision
 
         force1 = moteur.team_strength.get(team1_name.lower(), DEFAULT_TEAM_STRENGTH)
         force2 = moteur.team_strength.get(team2_name.lower(), DEFAULT_TEAM_STRENGTH)
@@ -304,12 +234,12 @@ class Franck:
 
         forme1 = get_team_form(team1_id)
         forme2 = get_team_form(team2_id)
-        force1 += forme1["bonus"]
-        force2 += forme2["bonus"]
+        force1 += forme1.get("bonus", 0)
+        force2 += forme2.get("bonus", 0)
 
         h2h = get_head_to_head(team1_id, team2_id)
-        force1 += h2h["bonus_team1"]
-        force2 += h2h["bonus_team2"]
+        force1 += h2h.get("bonus_team1", 0)
+        force2 += h2h.get("bonus_team2", 0)
 
         if force1 > force2:
             return f"📊 Analyse: {team1_name.title()} est favori ({force1} vs {force2})"
