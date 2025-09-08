@@ -1,0 +1,20 @@
+{
+  "real madrid": {
+    "définition": "Selon Wikipedia : Le Real Madrid Club de Fútbol, couramment appelé Real Madrid, est un club professionnel espagnol de football, situé à Madrid. Vainqueur de très nombreux titres nationaux et internationaux, il a reçu de la Fédération internationale de football association (FIFA) le titre honorifique de plus grand club du XXe siècle.",
+    "tactique": "Tactique à compléter.",
+    "transfert": "Transferts à compléter.",
+    "performance": "Performance à compléter."
+  },
+  "porto": {
+    "définition": "Selon Wikipedia (Futebol Clube do Porto) : Le Futebol Clube do Porto, abrégé plus couramment en FC Porto ou FCP, est un club omnisports portugais de la ville de Porto, fondé en 1893. Sa section football a participé à toutes les éditions du championnat du Portugal dont il est un membre fondateur, depuis 1934. Il partage cette caractéristique avec le Benfica Lisbonne et le Sporting CP, deux clubs de Lisbonne avec lesquels il forme Os Três Grandes en français : « Les trois grands ».",
+    "tactique": "Tactique à compléter.",
+    "transfert": "Transferts à compléter.",
+    "performance": "Performance à compléter."
+  },
+  "liverpool": {
+    "définition": "Selon Wikipedia (Liverpool Football Club) : Le Liverpool Football Club, souvent abrégé en Liverpool FC ou simplement Liverpool, est un club de football anglais fondé le 3 juin 1892 et situé à Liverpool, dans le Nord-Ouest de l'Angleterre.",
+    "tactique": "Tactique à compléter.",
+    "transfert": "Transferts à compléter.",
+    "performance": "Performance à compléter."
+  }
+}

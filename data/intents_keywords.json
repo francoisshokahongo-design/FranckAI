@@ -1,0 +1,23 @@
+{
+  "définition": [
+    "c'est quoi", "qui est", "qu'est-ce que", "présente", "définis", "parle-moi de",
+    "dis-moi tout sur", "infos sur", "histoire de", "club de", "définition", "description",
+    "présentation", "renseignements", "contexte", "origine", "fondation", "création",
+    "localisation", "ville", "pays", "nom complet", "abréviation", "surnom", "logo", "couleurs"
+  ],
+  "tactique": [
+    "comment joue", "style de jeu", "tactique", "formation", "stratégie",
+    "système de jeu", "plan de jeu", "schéma tactique", "approche", "jeu offensif"
+  ],
+  "transfert": [
+    "transfert", "mercato", "recrue", "achat", "vente", "joueurs ciblés",
+    "rumeurs", "arrivées", "départs", "négociations", "signature", "contrat",
+    "prêt", "option d'achat", "clause", "agent", "intérêt", "contact", "discussion"
+  ],
+  "performance": [
+    "performance", "statistiques", "résultat", "match", "classement",
+    "score", "bilan", "forme actuelle", "derniers matchs", "victoires", "défaites",
+    "points", "série", "invincibilité", "but", "passes décisives", "clean sheet",
+    "moyenne", "ratio", "efficacité", "domicile", "extérieur"
+  ]
+}

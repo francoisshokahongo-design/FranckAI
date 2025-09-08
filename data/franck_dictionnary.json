@@ -1,0 +1,44 @@
+{
+  "real madrid": {
+    "définition": "Club espagnol fondé en 1902, le Real Madrid est l’un des clubs les plus titrés au monde.",
+    "tactique": "Système en 4-3-3 avec des transitions rapides et des latéraux offensifs.",
+    "transfert": "Souvent lié à des stars comme Mbappé, Haaland ou Davies.",
+    "performance": "Vice-champion de Liga, demi-finaliste de Ligue des champions."
+  },
+  "psg": {
+    "définition": "Club français basé à Paris, fondé en 1970, connu pour ses ambitions européennes.",
+    "tactique": "Jeu basé sur la possession et les exploits individuels.",
+    "transfert": "Cible des joueurs comme Bernardo Silva, Osimhen ou Thuram.",
+    "performance": "Champion de Ligue 1, éliminé en huitièmes de Ligue des champions."
+  },
+  "manchester city": {
+    "définition": "Club anglais basé à Manchester, dominant en Premier League ces dernières années.",
+    "tactique": "Style de jeu très structuré en 4-3-3 avec pressing haut et contrôle du ballon.",
+    "transfert": "Recrute des profils techniques comme Gvardiol ou Paquetá.",
+    "performance": "Champion d’Angleterre et vainqueur de la Ligue des champions."
+  },
+  "barcelona": {
+    "définition": "Club catalan fondé en 1899, célèbre pour sa philosophie de jeu et son académie La Masia.",
+    "tactique": "Jeu de possession en 4-3-3 avec des jeunes intégrés au système.",
+    "transfert": "Cible des joueurs libres ou en fin de contrat comme Gundogan.",
+    "performance": "Champion de Liga, éliminé en phase de groupes de Ligue des champions."
+  },
+  "bayern munich": {
+    "définition": "Club allemand fondé en 1900, leader historique de la Bundesliga.",
+    "tactique": "Système offensif en 4-2-3-1 avec des ailes très rapides.",
+    "transfert": "Actif sur le marché avec des recrues comme Kane ou Kim Min-jae.",
+    "performance": "Champion de Bundesliga, quart de finaliste en Ligue des champions."
+  },
+  "chelsea": {
+    "définition": "Club londonien fondé en 1905, connu pour ses investissements massifs.",
+    "tactique": "Jeu en 3-4-3 ou 4-2-3-1 selon l’entraîneur, basé sur la verticalité.",
+    "transfert": "Recrutement jeune et ambitieux: Mudryk, Enzo Fernández, Caicedo.",
+    "performance": "Saison difficile, hors des places européennes."
+  },
+  "juventus": {
+    "définition": "Club italien basé à Turin, fondé en 1897, avec une forte tradition défensive.",
+    "tactique": "Système en 3-5-2 ou 4-4-2, jeu pragmatique et physique.",
+    "transfert": "Souvent lié à des milieux expérimentés comme Pogba ou Rabiot.",
+    "performance": "Sanctionné en Serie A, participation à la Ligue Europa."
+  }
+}
