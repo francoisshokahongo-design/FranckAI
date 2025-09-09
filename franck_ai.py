@@ -7,7 +7,7 @@ import requests
 import json
 import os
 import re
-import spacy  # ← Intégré pour la compréhension sémantique
+import spacy
 from urllib.parse import quote
 from engine import PredictionEngine
 from api_connector import get_team_info
@@ -29,43 +29,35 @@ WIKI_HEADERS = {
     "User-Agent": "FranckAI Bot/1.0 (contact@franckai.example.com) - Projet educatif"
 }
 
-def safe_quote(text):
-    """Nettoie et encode un texte pour l'utiliser dans une URL."""
-    if not isinstance(text, str):
-        text = str(text)
-    text = re.sub(r'[^\x00-\x7F]+', '', text)
-    return quote(text.strip())
-
-def build_search_url(query):
-    """Construit une URL de recherche Wikipedia propre et sécurisée."""
-    encoded_query = safe_quote(query)
-    return f"https://fr.wikipedia.org/w/api.php?action=query&list=search&srsearch={encoded_query}&format=json"
-
-def build_summary_url(title):
-    """Construit une URL de résumé Wikipedia propre et sécurisée."""
-    encoded_title = safe_quote(title)
-    return f"https://fr.wikipedia.org/api/rest_v1/page/summary/{encoded_title}"  # ← ESPACES SUPPRIMÉS
+# =============================
+# 🧠 1. Analyse sémantique avec spaCy
+# =============================
 
 class Franck:
     def __init__(self):
         self.personnalité = "Expert du football, direct, loyal à Franck"
         self.mémoire = []
         self.historique_predictions = []
+        self.historique_interactions = []  # ← Ajouté pour le feedback
+        self.base_connaissances = self._charger_connaissances()  # ← Base évolutive
         self.clubs = [
             "real madrid", "barcelona", "psg", "manchester united", "manchester city",
             "chelsea", "liverpool", "arsenal", "bayern munich", "juventus", "inter milan",
             "ac milan", "napoli", "marseille", "ajax", "benfica", "porto"
         ]
         self.prévision = PredictionEngine()
-        self.connaissances = self._charger_connaissances()
 
-        # Charger le modèle spaCy pour la compréhension sémantique
+        # Charger le modèle spaCy
         try:
             self.nlp = spacy.load("fr_core_news_md")
             logging.info("✅ Modèle spaCy chargé avec succès.")
         except Exception as e:
             logging.error(f"❌ Erreur de chargement de spaCy : {e}")
             self.nlp = None
+
+    # =============================
+    # 📚 3. Base de connaissances évolutive
+    # =============================
 
     def _charger_connaissances(self):
         if os.path.exists(DICTIONARY_PATH):
@@ -78,38 +70,164 @@ class Franck:
     def _sauvegarder_connaissances(self):
         os.makedirs(os.path.dirname(DICTIONARY_PATH), exist_ok=True)
         with open(DICTIONARY_PATH, "w", encoding="utf-8") as f:
-            json.dump(self.connaissances, f, ensure_ascii=False, indent=2)
+            json.dump(self.base_connaissances, f, ensure_ascii=False, indent=2)
+
+    def ajouter_connaissance(self, question, reponse):
+        """Ajoute une connaissance à la base."""
+        self.base_connaissances[question.lower()] = reponse
+        self._sauvegarder_connaissances()
+
+    def chercher_connaissance(self, question):
+        """Cherche une connaissance dans la base."""
+        return self.base_connaissances.get(question.lower())
+
+    # =============================
+    # 🔄 4. Enregistrement des interactions + feedback
+    # =============================
+
+    def enregistrer_interaction(self, question, reponse, validée=False):
+        """Enregistre une interaction pour le feedback."""
+        self.historique_interactions.append({
+            "question": question,
+            "reponse": reponse,
+            "validee": validée
+        })
+
+    def corriger_reponse(self, question, nouvelle_reponse):
+        """Corrige une réponse et la sauvegarde."""
+        self.ajouter_connaissance(question, nouvelle_reponse)
+        # Marquer comme validée dans l'historique
+        for interaction in self.historique_interactions:
+            if interaction["question"] == question:
+                interaction["validee"] = True
+                interaction["reponse"] = nouvelle_reponse
+
+    # =============================
+    # 🧠 Fonctions d'analyse sémantique
+    # =============================
+
+    def analyser_question(self, question):
+        """Analyse une question avec spaCy."""
+        if not self.nlp:
+            return {"question": question, "entites": [], "mots_cles": [], "intention": "générale"}
+
+        doc = self.nlp(question)
+        entites = [ent.text for ent in doc.ents]
+        mots_cles = [token.lemma_ for token in doc if token.pos_ in ["VERB", "NOUN"]]
+        intention = self.detecter_intention(doc)
+
+        return {
+            "question": question,
+            "entites": entites,
+            "mots_cles": mots_cles,
+            "intention": intention
+        }
+
+    def detecter_intention(self, doc):
+        """Détecte l'intention de la question."""
+        question_text = doc.text.lower()
+        if "qui a fondé" in question_text or "créé" in question_text or "créer" in question_text:
+            return "fondateur"
+        elif "parle-moi de" in question_text or "présente" in question_text or "c'est quoi" in question_text:
+            return "description"
+        elif "gagné" in question_text or "score" in question_text or "résultat" in question_text:
+            return "résultat"
+        else:
+            return "générale"
+
+    # =============================
+    # 🌐 2. Recherche sur Wikipedia
+    # =============================
+
+    def chercher_sur_wikipedia(self, question):
+        """Cherche un article Wikipedia correspondant à la question."""
+        url = "https://fr.wikipedia.org/w/api.php"
+        params = {
+            "action": "query",
+            "format": "json",
+            "list": "search",
+            "srsearch": question,
+            "utf8": 1
+        }
+
+        try:
+            response = requests.get(url, params=params, headers=WIKI_HEADERS, timeout=10)
+            if response.status_code != 200:
+                return None
+
+            data = response.json()
+            if data.get("query", {}).get("search"):
+                return data["query"]["search"][0]["title"]
+        except Exception as e:
+            logging.error(f"❌ Erreur Wikipedia search : {e}")
+        return None
+
+    def resume_wikipedia(self, titre):
+        """Récupère le résumé d'un article Wikipedia."""
+        if not titre:
+            return "Titre invalide."
+
+        # Nettoyer le titre pour l'URL
+        titre_encode = quote(titre.replace(' ', '_'))
+        url = f"https://fr.wikipedia.org/api/rest_v1/page/summary/{titre_encode}"
+
+        try:
+            response = requests.get(url, headers=WIKI_HEADERS, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("extract", "Résumé introuvable.")
+            else:
+                return "Résumé introuvable."
+        except Exception as e:
+            logging.error(f"❌ Erreur Wikipedia summary : {e}")
+            return "Erreur lors de la récupération du résumé."
+
+    # =============================
+    # 🚀 Point d'entrée principal : operer()
+    # =============================
+
+    def operer(self, message):
+        """Traite une question de l'utilisateur."""
+
+        # 1. Vérifier si on a déjà une réponse dans la base
+        reponse_connue = self.chercher_connaissance(message)
+        if reponse_connue:
+            self.enregistrer_interaction(message, reponse_connue, validée=True)
+            return reponse_connue
+
+        # 2. Analyser la question
+        analyse = self.analyser_question(message)
+        logging.info(f"🔍 Analyse : {analyse}")
+
+        # 3. Chercher sur Wikipedia
+        titre = self.chercher_sur_wikipedia(message)
+        if titre:
+            resume = self.resume_wikipedia(titre)
+            # Sauvegarder la connaissance
+            self.ajouter_connaissance(message, resume)
+            self.enregistrer_interaction(message, resume)
+            return resume
+
+        # 4. Fallback
+        reponse = "Je n’ai pas trouvé d’information pertinente sur cette question."
+        self.enregistrer_interaction(message, reponse)
+        return reponse
+
+    # =============================
+    # ⚽ Anciennes méthodes (compatibilité)
+    # =============================
 
     def apprendre_club(self, nom_club):
-        nom_club_lower = nom_club.lower()
-        if nom_club_lower in self.connaissances:
-            return f"Je connais déjà {nom_club}. Voici ce que je sais : {self.connaissances[nom_club_lower]['définition']}"
-        else:
-            description = self.chercher_club_en_ligne(nom_club)
-            self.connaissances[nom_club_lower] = {
-                "définition": description,
-                "tactique": "À compléter.",
-                "transfert": "À compléter.",
-                "performance": "À compléter."
-            }
-            self._sauvegarder_connaissances()
-            self.clubs.append(nom_club_lower)
-            return description
+        return self.operer(f"Présente-moi {nom_club}")
 
     def predict_match(self, message):
         if " vs " not in message.lower():
             return "Format incorrect. Utilise : <Équipe1> vs <Équipe2>"
-
         parts = message.split(" vs ")
         if len(parts) != 2:
             return "Format incorrect."
-
-        team1 = parts[0].strip()
-        team2 = parts[1].strip()
-
-        resultat = self.analyse_match(team1, team2)
-        self.historique_predictions.append(f"{team1} vs {team2} → {resultat}")
-        return resultat
+        team1, team2 = parts[0].strip(), parts[1].strip()
+        return self.operer(f"Prédire le match entre {team1} et {team2}")
 
     def afficher_historique_prédictions(self, nombre_lignes=None):
         if not self.historique_predictions:
@@ -117,137 +235,12 @@ class Franck:
         lignes = self.historique_predictions[-nombre_lignes:] if nombre_lignes else self.historique_predictions
         return "\n".join(lignes)
 
-    def detect_intention(self, doc):
-        """Détecte l'intention de la question à partir du doc spaCy."""
-        if any(token.lemma_ == "créer" for token in doc):
-            return "question_fondation"
-        elif any(token.lemma_ == "gagner" for token in doc):
-            return "question_résultat"
-        elif any(token.lemma_ == "jouer" for token in doc):
-            return "question_match"
-        else:
-            return "question_générale"
-
-    def operer(self, message):
-        """Traite une question libre de l'utilisateur avec compréhension sémantique."""
-        # Si spaCy n'est pas disponible, fallback sur l'ancien comportement
-        if not self.nlp:
-            return self._operer_fallback(message)
-
-        try:
-            # Traiter la question avec spaCy
-            doc = self.nlp(message)
-
-            # Détecter l'intention
-            intention = self.detect_intention(doc)
-
-            # Extraire les entités nommées (clubs, joueurs, etc.)
-            entites = [ent.text.lower() for ent in doc.ents if ent.label_ in ["ORG", "PERSON"]]
-
-            # Répondre selon l'intention et les entités détectées
-            if intention == "question_fondation" and entites:
-                return self.repondre_fondation(entites[0])
-            elif intention == "question_résultat" and entites:
-                return self.repondre_resultat(entites[0])
-            elif intention == "question_match" and len(entites) >= 2:
-                return self.analyse_match(entites[0], entites[1])
-            else:
-                # Fallback : recherche générale
-                return self.chercher_club_en_ligne(message)
-
-        except Exception as e:
-            logging.error(f"Erreur spaCy : {e}")
-            return self._operer_fallback(message)
-
-    def _operer_fallback(self, message):
-        """Ancien comportement de operer() — fallback si spaCy échoue."""
-        message_lower = message.lower()
-        for club in self.clubs:
-            if club in message_lower:
-                if club in self.connaissances:
-                    return self.connaissances[club]["définition"]
-                else:
-                    return self.chercher_club_en_ligne(club)
-
-        try:
-            termes = [
-                f"{message} football",
-                f"football {message}",
-                f"club de {message}",
-                message
-            ]
-
-            for terme in termes:
-                search_url = build_search_url(terme)
-                try:
-                    resp = requests.get(search_url, headers=WIKI_HEADERS, timeout=5)
-                    if resp.status_code != 200:
-                        continue
-
-                    data = resp.json()
-                    results = data.get("query", {}).get("search", [])
-                    for result in results:
-                        title = result["title"]
-                        if any(kw in title.lower() for kw in ["fc", "football", "club", "équipe"]):
-                            summary_url = build_summary_url(title)
-                            resp2 = requests.get(summary_url, headers=WIKI_HEADERS, timeout=5)
-                            if resp2.status_code == 200:
-                                page_data = resp2.json()
-                                summary = page_data.get("extract", "Résumé non disponible.")
-                                return f"Selon Wikipedia ({title}) : {summary}"
-                except Exception:
-                    continue
-
-            return "Je ne sais pas. Essaye d’être plus précis."
-
-        except Exception as e:
-            return f"Je ne sais pas. (Erreur: {e})"
-
-    def repondre_fondation(self, entite):
-        """Répond à une question sur la fondation d'un club."""
-        if entite in self.connaissances:
-            return self.connaissances[entite]["définition"]
-        else:
-            return self.chercher_club_en_ligne(entite)
-
-    def repondre_resultat(self, entite):
-        """Répond à une question sur les résultats d'un club."""
-        info = get_team_info(entite)
-        if info:
-            forme = get_team_form(info.get("id"))
-            if forme and forme.get("performance_percent"):
-                return f"Récemment, {entite.title()} a {forme['performance_percent']:.1f}% de victoires."
-        return f"Je cherche les derniers résultats de {entite}..."
-
     def analyse_match(self, team1_name, team2_name, home_team=None):
-        team1_id = self.get_team_id(team1_name)
-        team2_id = self.get_team_id(team2_name)
-        moteur = self.prévision
-
-        force1 = moteur.team_strength.get(team1_name.lower(), DEFAULT_TEAM_STRENGTH)
-        force2 = moteur.team_strength.get(team2_name.lower(), DEFAULT_TEAM_STRENGTH)
-
-        if home_team and home_team.lower() == team1_name.lower():
-            force1 += HOME_ADVANTAGE_BONUS
-        elif home_team and home_team.lower() == team2_name.lower():
-            force2 += HOME_ADVANTAGE_BONUS
-
-        forme1 = get_team_form(team1_id)
-        forme2 = get_team_form(team2_id)
-        force1 += forme1.get("bonus", 0)
-        force2 += forme2.get("bonus", 0)
-
-        h2h = get_head_to_head(team1_id, team2_id)
-        force1 += h2h.get("bonus_team1", 0)
-        force2 += h2h.get("bonus_team2", 0)
-
-        if force1 > force2:
-            return f"📊 Analyse: {team1_name.title()} est favori ({force1} vs {force2})"
-        elif force2 > force1:
-            return f"📊 Analyse: {team2_name.title()} est favori ({force2} vs {force1})"
-        else:
-            return f"📊 Analyse: Match équilibré ({force1} vs {force2})"
+        return self.operer(f"Analyser le match {team1_name} vs {team2_name}")
 
     def get_team_id(self, team_name):
         info = get_team_info(team_name)
         return info["id"] if info else None
+
+    def chercher_club_en_ligne(self, nom_club):
+        return self.operer(f"Parle-moi de {nom_club}")
