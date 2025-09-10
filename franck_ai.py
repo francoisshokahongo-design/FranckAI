@@ -140,13 +140,31 @@ class Franck:
     # =============================
 
     def chercher_sur_wikipedia(self, question):
-        """Cherche un article Wikipedia correspondant à la question."""
+        """Cherche un article Wikipedia correspondant à la question — version améliorée."""
+        # Liste de joueurs connus avec leur titre Wikipedia exact
+        joueurs_connus = {
+            "rodrigo goes": "Rodrigo (footballer, born 1991)",
+            "rodrigo": "Rodrigo (footballer, born 1991)",
+            "neymar": "Neymar",
+            "mbappe": "Kylian Mbappé",
+            "messi": "Lionel Messi",
+            "ronaldo": "Cristiano Ronaldo",
+            # Ajoute d'autres joueurs ici
+        }
+
+        # Vérifier si la question contient un joueur connu
+        question_lower = question.lower()
+        for joueur, titre_officiel in joueurs_connus.items():
+            if joueur in question_lower:
+                return titre_officiel
+
+        # Sinon, faire une recherche normale
         url = "https://fr.wikipedia.org/w/api.php"
         params = {
             "action": "query",
             "format": "json",
             "list": "search",
-            "srsearch": question,
+            "srsearch": f"{question} football",
             "utf8": 1
         }
 
@@ -157,6 +175,12 @@ class Franck:
 
             data = response.json()
             if data.get("query", {}).get("search"):
+                # Filtrer pour ne garder que les pages liées au football
+                for result in data["query"]["search"]:
+                    title = result["title"]
+                    if any(kw in title.lower() for kw in ["football", "joueur", "attaquant", "milieu", "défenseur", "gardien"]):
+                        return title
+                # Si aucun filtre ne marche, retourner le premier résultat
                 return data["query"]["search"][0]["title"]
         except Exception as e:
             logging.error(f"❌ Erreur Wikipedia search : {e}")
