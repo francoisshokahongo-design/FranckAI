@@ -29,17 +29,20 @@ WIKI_HEADERS = {
     "User-Agent": "FranckAI Bot/1.0 (contact@franckai.example.com) - Projet educatif"
 }
 
-# =============================
-# 🧠 1. Analyse sémantique avec spaCy
-# =============================
+def safe_quote(text):
+    """Nettoie et encode un texte pour l'utiliser dans une URL."""
+    if not isinstance(text, str):
+        text = str(text)
+    text = re.sub(r'[^\x00-\x7F]+', '', text)
+    return quote(text.strip())
 
 class Franck:
     def __init__(self):
         self.personnalité = "Expert du football, direct, loyal à Franck"
         self.mémoire = []
         self.historique_predictions = []
-        self.historique_interactions = []  # ← Ajouté pour le feedback
-        self.base_connaissances = self._charger_connaissances()  # ← Base évolutive
+        self.historique_interactions = []
+        self.base_connaissances = self._charger_connaissances()
         self.clubs = [
             "real madrid", "barcelona", "psg", "manchester united", "manchester city",
             "chelsea", "liverpool", "arsenal", "bayern munich", "juventus", "inter milan",
@@ -56,7 +59,7 @@ class Franck:
             self.nlp = None
 
     # =============================
-    # 📚 3. Base de connaissances évolutive
+    # 📚 Base de connaissances évolutive
     # =============================
 
     def _charger_connaissances(self):
@@ -73,20 +76,17 @@ class Franck:
             json.dump(self.base_connaissances, f, ensure_ascii=False, indent=2)
 
     def ajouter_connaissance(self, question, reponse):
-        """Ajoute une connaissance à la base."""
         self.base_connaissances[question.lower()] = reponse
         self._sauvegarder_connaissances()
 
     def chercher_connaissance(self, question):
-        """Cherche une connaissance dans la base."""
         return self.base_connaissances.get(question.lower())
 
     # =============================
-    # 🔄 4. Enregistrement des interactions + feedback
+    # 🔄 Enregistrement des interactions
     # =============================
 
     def enregistrer_interaction(self, question, reponse, validée=False):
-        """Enregistre une interaction pour le feedback."""
         self.historique_interactions.append({
             "question": question,
             "reponse": reponse,
@@ -94,20 +94,17 @@ class Franck:
         })
 
     def corriger_reponse(self, question, nouvelle_reponse):
-        """Corrige une réponse et la sauvegarde."""
         self.ajouter_connaissance(question, nouvelle_reponse)
-        # Marquer comme validée dans l'historique
         for interaction in self.historique_interactions:
             if interaction["question"] == question:
                 interaction["validee"] = True
                 interaction["reponse"] = nouvelle_reponse
 
     # =============================
-    # 🧠 Fonctions d'analyse sémantique
+    # 🧠 Analyse sémantique
     # =============================
 
     def analyser_question(self, question):
-        """Analyse une question avec spaCy."""
         if not self.nlp:
             return {"question": question, "entites": [], "mots_cles": [], "intention": "générale"}
 
@@ -124,7 +121,6 @@ class Franck:
         }
 
     def detecter_intention(self, doc):
-        """Détecte l'intention de la question."""
         question_text = doc.text.lower()
         if "qui a fondé" in question_text or "créé" in question_text or "créer" in question_text:
             return "fondateur"
@@ -132,16 +128,17 @@ class Franck:
             return "description"
         elif "gagné" in question_text or "score" in question_text or "résultat" in question_text:
             return "résultat"
+        elif "plus titré" in question_text or "record" in question_text or "meilleur" in question_text:
+            return "statistique"
         else:
             return "générale"
 
     # =============================
-    # 🌐 2. Recherche sur Wikipedia
+    # 🌐 Recherche sur Wikipedia
     # =============================
 
     def chercher_sur_wikipedia(self, question):
-        """Cherche un article Wikipedia correspondant à la question — version améliorée."""
-        # Liste de joueurs connus avec leur titre Wikipedia exact
+        """Cherche un article Wikipedia correspondant à la question."""
         joueurs_connus = {
             "rodrigo goes": "Rodrigo (footballer, born 1991)",
             "rodrigo": "Rodrigo (footballer, born 1991)",
@@ -149,16 +146,13 @@ class Franck:
             "mbappe": "Kylian Mbappé",
             "messi": "Lionel Messi",
             "ronaldo": "Cristiano Ronaldo",
-            # Ajoute d'autres joueurs ici
         }
 
-        # Vérifier si la question contient un joueur connu
         question_lower = question.lower()
         for joueur, titre_officiel in joueurs_connus.items():
             if joueur in question_lower:
                 return titre_officiel
 
-        # Sinon, faire une recherche normale
         url = "https://fr.wikipedia.org/w/api.php"
         params = {
             "action": "query",
@@ -175,12 +169,10 @@ class Franck:
 
             data = response.json()
             if data.get("query", {}).get("search"):
-                # Filtrer pour ne garder que les pages liées au football
                 for result in data["query"]["search"]:
                     title = result["title"]
                     if any(kw in title.lower() for kw in ["football", "joueur", "attaquant", "milieu", "défenseur", "gardien"]):
                         return title
-                # Si aucun filtre ne marche, retourner le premier résultat
                 return data["query"]["search"][0]["title"]
         except Exception as e:
             logging.error(f"❌ Erreur Wikipedia search : {e}")
@@ -191,8 +183,7 @@ class Franck:
         if not titre:
             return "Titre invalide."
 
-        # Nettoyer le titre pour l'URL
-        titre_encode = quote(titre.replace(' ', '_'))
+        titre_encode = safe_quote(titre.replace(' ', '_'))
         url = f"https://fr.wikipedia.org/api/rest_v1/page/summary/{titre_encode}"
 
         try:
@@ -207,32 +198,25 @@ class Franck:
             return "Erreur lors de la récupération du résumé."
 
     # =============================
-    # 🚀 Point d'entrée principal : operer()
+    # 🚀 Point d'entrée principal
     # =============================
 
     def operer(self, message):
-        """Traite une question de l'utilisateur."""
-
-        # 1. Vérifier si on a déjà une réponse dans la base
         reponse_connue = self.chercher_connaissance(message)
         if reponse_connue:
             self.enregistrer_interaction(message, reponse_connue, validée=True)
             return reponse_connue
 
-        # 2. Analyser la question
         analyse = self.analyser_question(message)
         logging.info(f"🔍 Analyse : {analyse}")
 
-        # 3. Chercher sur Wikipedia
         titre = self.chercher_sur_wikipedia(message)
         if titre:
             resume = self.resume_wikipedia(titre)
-            # Sauvegarder la connaissance
             self.ajouter_connaissance(message, resume)
             self.enregistrer_interaction(message, resume)
             return resume
 
-        # 4. Fallback
         reponse = "Je n’ai pas trouvé d’information pertinente sur cette question."
         self.enregistrer_interaction(message, reponse)
         return reponse
