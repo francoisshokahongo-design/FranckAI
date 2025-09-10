@@ -128,7 +128,13 @@ class Franck:
             return "description"
         elif "gagné" in question_text or "score" in question_text or "résultat" in question_text:
             return "résultat"
-        elif "plus titré" in question_text or "record" in question_text or "meilleur" in question_text:
+        elif ("plus titré" in question_text or
+              "record" in question_text or
+              "meilleur" in question_text or
+              "plus de" in question_text or
+              "combien de" in question_text or
+              "statistique" in question_text or
+              "classement" in question_text):
             return "statistique"
         else:
             return "générale"
@@ -201,15 +207,49 @@ class Franck:
     # 🚀 Point d'entrée principal
     # =============================
 
+    def repondre_statistique(self, question):
+        """Répond aux questions de type statistique (records, classements, etc.)."""
+        question_lower = question.lower()
+
+        # Base de données manuelle de records (à enrichir)
+        statistiques = {
+            "club le plus titré de l'histoire de la liga": "🏆 Le Real Madrid est le club le plus titré de l'histoire de la Liga, avec 36 titres (au 2025). Le FC Barcelone est 2e avec 27 titres.",
+            "meilleur buteur de l'histoire de la liga": "⚽ Lionel Messi est le meilleur buteur de l'histoire de la Liga, avec 474 buts pour le FC Barcelone.",
+            "club le plus titré d'europe": "🌍 Le Real Madrid est le club le plus titré d'Europe, avec 15 titres en Ligue des champions.",
+            "gardien avec le plus de clean sheets": "🧤 Jan Oblak (Atlético Madrid) détient le record de clean sheets par saison en Liga (27 en 2015-2016)."
+        }
+
+        # Recherche approximative
+        for key, value in statistiques.items():
+            if key in question_lower:
+                return value
+
+        # Fallback : recherche sur Wikipedia
+        titre = self.chercher_sur_wikipedia(question)
+        if titre:
+            resume = self.resume_wikipedia(titre)
+            return f"Selon Wikipedia : {resume}"
+
+        return "Je n'ai pas encore cette statistique dans ma base de données."
+
     def operer(self, message):
         reponse_connue = self.chercher_connaissance(message)
         if reponse_connue:
             self.enregistrer_interaction(message, reponse_connue, validée=True)
             return reponse_connue
 
+        # Analyser la question
         analyse = self.analyser_question(message)
         logging.info(f"🔍 Analyse : {analyse}")
 
+        # Gérer l'intention "statistique"
+        if analyse["intention"] == "statistique":
+            reponse = self.repondre_statistique(message)
+            self.ajouter_connaissance(message, reponse)
+            self.enregistrer_interaction(message, reponse)
+            return reponse
+
+        # Chercher sur Wikipedia
         titre = self.chercher_sur_wikipedia(message)
         if titre:
             resume = self.resume_wikipedia(titre)
