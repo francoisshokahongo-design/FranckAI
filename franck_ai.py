@@ -239,7 +239,7 @@ class Franck:
         message_lower = message.lower()
 
         # ✅ 1. Scores en direct → PRIORITAIRE
-        if "scores en direct" in message_lower:
+        if "scores en direct" in message_lower or "score en direct" in message_lower:
             matches = get_live_scores()
             if matches:
                 reponse = "⚽ MATCHS EN DIRECT :\n"
@@ -252,31 +252,7 @@ class Franck:
             else:
                 return "Aucun match en direct pour l’instant."
 
-        # ✅ 2. Liste des pays
-        elif "pays supportés" in message_lower or "pays disponibles" in message_lower:
-            pays = get_countries()
-            if pays:
-                reponse = "🌍 PAYS SUPPORTÉS :\n"
-                for p in pays[:10]:  # 10 premiers pays
-                    reponse += f"- {p['country_name']}\n"
-                reponse += f"... et {len(pays) - 10} autres."
-                return reponse
-            else:
-                return "Impossible de récupérer la liste des pays."
-
-        # ✅ 3. Ligues d'un pays
-        elif "ligues en" in message_lower:
-            pays_nom = message_lower.replace("ligues en ", "").strip().title()
-            ligues = get_leagues_by_country(pays_nom)
-            if ligues:
-                reponse = f"🏆 LIGUES EN {pays_nom.upper()} :\n"
-                for ligue in ligues[:5]:
-                    reponse += f"- {ligue['league_name']}\n"
-                return reponse
-            else:
-                return f"Aucune ligue trouvée pour {pays_nom}."
-
-        # ✅ 4. Autres intentions (statistique, description, etc.)
+        # ✅ 2. Autres intentions (statistique, description, etc.)
         analyse = self.analyser_question(message)
         if analyse["intention"] == "statistique":
             reponse = self.repondre_statistique(message)
@@ -284,7 +260,7 @@ class Franck:
             self.enregistrer_interaction(message, reponse)
             return reponse
 
-        # ✅ 5. Recherche Wikipedia (fallback)
+        # ✅ 3. Recherche Wikipedia (fallback)
         reponse_connue = self.chercher_connaissance(message)
         if reponse_connue:
             self.enregistrer_interaction(message, reponse_connue, validée=True)
@@ -298,10 +274,6 @@ class Franck:
             return resume
 
         return "Je n’ai pas trouvé d’information pertinente sur cette question."
-
-    # =============================
-    # ⚽ Anciennes méthodes (compatibilité)
-    # =============================
 
     def apprendre_club(self, nom_club):
         return self.operer(f"Présente-moi {nom_club}")
