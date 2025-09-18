@@ -9,6 +9,7 @@ import os
 import re
 import spacy
 from urllib.parse import quote
+from allsport_connector import get_live_scores, get_countries, get_leagues_by_country, get_teams_by_league
 from engine import PredictionEngine
 from api_connector import get_team_info
 from utils.team_form import get_team_form
@@ -134,7 +135,8 @@ class Franck:
               "plus de" in question_text or
               "combien de" in question_text or
               "statistique" in question_text or
-              "classement" in question_text):
+              "classement" in question_text or
+              "seria a" in question_text):
             return "statistique"
         else:
             return "générale"
@@ -214,6 +216,7 @@ class Franck:
         # Base de données manuelle de records (à enrichir)
         statistiques = {
             "club le plus titré de l'histoire de la liga": "🏆 Le Real Madrid est le club le plus titré de l'histoire de la Liga, avec 36 titres (au 2025). Le FC Barcelone est 2e avec 27 titres.",
+            "club le plus titré de l'histoire de la seria a": "🏆 La Juventus de Turin est le club le plus titré de l'histoire de la Serie A, avec 36 titres (au 2025). L'Inter Milan et l'AC Milan suivent avec 19 titres chacun.",
             "meilleur buteur de l'histoire de la liga": "⚽ Lionel Messi est le meilleur buteur de l'histoire de la Liga, avec 474 buts pour le FC Barcelone.",
             "club le plus titré d'europe": "🌍 Le Real Madrid est le club le plus titré d'Europe, avec 15 titres en Ligue des champions.",
             "gardien avec le plus de clean sheets": "🧤 Jan Oblak (Atlético Madrid) détient le record de clean sheets par saison en Liga (27 en 2015-2016)."
@@ -233,23 +236,60 @@ class Franck:
         return "Je n'ai pas encore cette statistique dans ma base de données."
 
     def operer(self, message):
-        reponse_connue = self.chercher_connaissance(message)
-        if reponse_connue:
-            self.enregistrer_interaction(message, reponse_connue, validée=True)
-            return reponse_connue
+        message_lower = message.lower()
 
-        # Analyser la question
+        # ✅ 1. Scores en direct → PRIORITAIRE
+        if "scores en direct" in message_lower:
+            matches = get_live_scores()
+            if matches:
+                reponse = "⚽ MATCHS EN DIRECT :\n"
+                for match in matches[:5]:  # 5 premiers matchs
+                    home = match["event_home_team"]
+                    away = match["event_away_team"]
+                    score = f"{match['event_final_result']}"
+                    reponse += f"- {home} {score} {away}\n"
+                return reponse
+            else:
+                return "Aucun match en direct pour l’instant."
+
+        # ✅ 2. Liste des pays
+        elif "pays supportés" in message_lower or "pays disponibles" in message_lower:
+            pays = get_countries()
+            if pays:
+                reponse = "🌍 PAYS SUPPORTÉS :\n"
+                for p in pays[:10]:  # 10 premiers pays
+                    reponse += f"- {p['country_name']}\n"
+                reponse += f"... et {len(pays) - 10} autres."
+                return reponse
+            else:
+                return "Impossible de récupérer la liste des pays."
+
+        # ✅ 3. Ligues d'un pays
+        elif "ligues en" in message_lower:
+            pays_nom = message_lower.replace("ligues en ", "").strip().title()
+            ligues = get_leagues_by_country(pays_nom)
+            if ligues:
+                reponse = f"🏆 LIGUES EN {pays_nom.upper()} :\n"
+                for ligue in ligues[:5]:
+                    reponse += f"- {ligue['league_name']}\n"
+                return reponse
+            else:
+                return f"Aucune ligue trouvée pour {pays_nom}."
+
+        # ✅ 4. Autres intentions (statistique, description, etc.)
         analyse = self.analyser_question(message)
-        logging.info(f"🔍 Analyse : {analyse}")
-
-        # Gérer l'intention "statistique"
         if analyse["intention"] == "statistique":
             reponse = self.repondre_statistique(message)
             self.ajouter_connaissance(message, reponse)
             self.enregistrer_interaction(message, reponse)
             return reponse
 
-        # Chercher sur Wikipedia
+        # ✅ 5. Recherche Wikipedia (fallback)
+        reponse_connue = self.chercher_connaissance(message)
+        if reponse_connue:
+            self.enregistrer_interaction(message, reponse_connue, validée=True)
+            return reponse_connue
+
         titre = self.chercher_sur_wikipedia(message)
         if titre:
             resume = self.resume_wikipedia(titre)
@@ -257,9 +297,7 @@ class Franck:
             self.enregistrer_interaction(message, resume)
             return resume
 
-        reponse = "Je n’ai pas trouvé d’information pertinente sur cette question."
-        self.enregistrer_interaction(message, reponse)
-        return reponse
+        return "Je n’ai pas trouvé d’information pertinente sur cette question."
 
     # =============================
     # ⚽ Anciennes méthodes (compatibilité)
@@ -285,7 +323,68 @@ class Franck:
 
     def analyse_match(self, team1_name, team2_name, home_team=None):
         return self.operer(f"Analyser le match {team1_name} vs {team2_name}")
+        def predict_score(self, team1_name, team2_name, home_team=None):
+        """
+        Prédit le score d'un match futur entre deux équipes.
+        """
+        team1_id = self.get_team_id(team1_name)
+        team2_id = self.get_team_id(team2_name)
 
+        # Récupérer les forces de base
+        force1 = self.prévision.team_strength.get(team1_name.lower(), DEFAULT_TEAM_STRENGTH)
+        force2 = self.prévision.team_strength.get(team2_name.lower(), DEFAULT_TEAM_STRENGTH)
+
+        # Bonus domicile
+        if home_team and home_team.lower() == team1_name.lower():
+            force1 += HOME_ADVANTAGE_BONUS
+        elif home_team and home_team.lower() == team2_name.lower():
+            force2 += HOME_ADVANTAGE_BONUS
+
+        # Récupérer la forme récente
+        forme1 = get_team_form(team1_id)
+        forme2 = get_team_form(team2_id)
+        force1 += forme1.get("bonus", 0)
+        force2 += forme2.get("bonus", 0)
+
+        # Récupérer les stats H2H
+        h2h = get_head_to_head(team1_id, team2_id)
+        force1 += h2h.get("bonus_team1", 0)
+        force2 += h2h.get("bonus_team2", 0)
+
+        # Calculer les buts probables (base 1.0, ajusté par la force)
+        buts_team1 = max(0, round((force1 / 80) * 1.5))
+        buts_team2 = max(0, round((force2 / 80) * 1.5))
+
+        # Ajustement aléatoire léger pour le réalisme
+        import random
+        buts_team1 += random.randint(-1, 1)
+        buts_team2 += random.randint(-1, 1)
+        buts_team1 = max(0, buts_team1)
+        buts_team2 = max(0, buts_team2)
+
+        score = f"{buts_team1}-{buts_team2}"
+
+        # Générer une explication tactique
+        explication = ""
+        if buts_team1 > buts_team2:
+            explication = f"{team1_name.title()} devrait dominer grâce à sa forme récente et son effectif offensif."
+        elif buts_team2 > buts_team1:
+            explication = f"{team2_name.title()} a l'avantage tactique et une défense solide."
+        else:
+            explication = "Match serré — les deux équipes ont des forces équilibrées."
+
+        return {
+            "score": score,
+            "explication": explication,
+            "details": {
+                "team1": team1_name,
+                "team2": team2_name,
+                "force1": force1,
+                "force2": force2,
+                "forme1": forme1.get("performance_percent", 0),
+                "forme2": forme2.get("performance_percent", 0)
+            }
+        }
     def get_team_id(self, team_name):
         info = get_team_info(team_name)
         return info["id"] if info else None
