@@ -323,7 +323,7 @@ class Franck:
 
     def analyse_match(self, team1_name, team2_name, home_team=None):
         return self.operer(f"Analyser le match {team1_name} vs {team2_name}")
-        def predict_score(self, team1_name, team2_name, home_team=None):
+    def predict_score(self, team1_name, team2_name, home_team=None):
         """
         Prédit le score d'un match futur entre deux équipes.
         """
